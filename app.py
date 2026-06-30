@@ -42,7 +42,7 @@ import matplotlib.font_manager as font_manager
 
 import arabic_reshaper
 from bidi.algorithm import get_display
-
+OPENAI_API_KEY = "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"
 def ar(text):
     text = str(text)
     return get_display(arabic_reshaper.reshape(text))
@@ -114,7 +114,25 @@ except Exception:
 # STREAMLIT CONFIG
 # -------------------------
 load_dotenv(override=True)
+# STREAMLIT CONFIG
+# -------------------------
+try:
+    load_dotenv(override=True)
+except Exception:
+    pass
 
+# OpenAI API Key
+OPENAI_API_KEY = (
+    st.secrets.get("OPENAI_API_KEY", "")
+    if hasattr(st, "secrets")
+    else ""
+) or os.getenv("OPENAI_API_KEY", "")
+
+if not OPENAI_API_KEY:
+    st.error("❌ OPENAI_API_KEY missing")
+    st.stop()
+
+client = OpenAI(api_key=OPENAI_API_KEY)
 # -------------------------
 # THEME COLORS
 # -------------------------
@@ -1228,9 +1246,23 @@ def fig_to_png_bytes(obj, dpi=150):
 # OPENAI
 # -------------------------
 def openai_client():
-    api_key = (os.getenv("OPENAI_API_KEY") or "").strip()
+    api_key = ""
+
+    # أولاً: اقرأ من Streamlit Secrets
+    try:
+        api_key = st.secrets.get("OPENAI_API_KEY", "")
+    except Exception:
+        pass
+
+    # ثانياً: إذا لم يوجد، اقرأ من .env أو متغيرات البيئة
+    if not api_key:
+        api_key = os.getenv("OPENAI_API_KEY", "")
+
+    api_key = api_key.strip()
+
     if not api_key:
         return None, "OPENAI_API_KEY missing"
+
     try:
         return OpenAI(api_key=api_key), ""
     except Exception as e:
