@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 #from ultralytics import YOLO
 
-from dotenv import load_dotenv
+#from dotenv import load_dotenv
 from openai import OpenAI
 
 from reportlab.lib.pagesizes import A4
