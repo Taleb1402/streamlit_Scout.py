@@ -11,3 +11,4 @@ python-bidi
 opencv-python-headless
 ultralytics
 python-dotenv
+groq
