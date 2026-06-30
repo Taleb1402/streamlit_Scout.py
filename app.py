@@ -105,10 +105,31 @@ if _logo_img is not None:
             pass
 import streamlit as st
 import pandas as pd
+import requests, io
 
-csv_url = "https://raw.githubusercontent.com/Taleb1402/streamlit_Scout.py/main/7658_1782653467327.csv"
-df = pd.read_csv(csv_url)
-st.dataframe(df)
+# Default CSV URL (user-provided)
+csv_url_default = "https://raw.githubusercontent.com/Taleb1402/streamlit_Scout.py/main/7658_1782653467327.csv"
+
+def load_csv_from_url(url: str, timeout: int = 10) -> pd.DataFrame:
+    """Robust CSV loader: tries the URL, falls back to GitHub raw conversion if needed."""
+    try:
+        resp = requests.get(url, timeout=timeout)
+        resp.raise_for_status()
+        txt = resp.text
+
+        # If the response looks like HTML (GitHub page instead of raw), try to convert
+        if txt.lstrip().startswith("<"):
+            if "github.com" in url and "raw.githubusercontent.com" not in url:
+                raw_url = url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
+                resp2 = requests.get(raw_url, timeout=timeout)
+                resp2.raise_for_status()
+                txt = resp2.text
+            else:
+                raise ValueError("URL did not return CSV content; received HTML")
+
+        return pd.read_csv(io.StringIO(txt))
+    except Exception:
+        raise
 # -------------------------
 # OPTIONAL RTL shaping libs
 # -------------------------
@@ -131,11 +152,16 @@ except Exception:
     pass
 
 # OpenAI API Key: prefer hosting secrets, then environment; fallback to sidebar input (session-only)
-OPENAI_API_KEY = (
-    st.secrets.get("OPENAI_API_KEY", "")
-    if hasattr(st, "secrets")
-    else ""
-) or os.getenv("OPENAI_API_KEY", "")
+try:
+    # Access st.secrets inside try/except because Streamlit raises if no secrets file exists
+    OPENAI_API_KEY = ""
+    try:
+        OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", "")
+    except Exception:
+        OPENAI_API_KEY = ""
+    OPENAI_API_KEY = OPENAI_API_KEY or os.getenv("OPENAI_API_KEY", "")
+except Exception:
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 if not OPENAI_API_KEY:
     try:
@@ -202,6 +228,46 @@ PITCH_W, PITCH_H = 120.0, 80.0
 ATTACK_DIR = "L2R"
 # Use a cost-effective fallback model to avoid quota issues when possible
 MODEL = "llama-3.1-8b-instant"
+
+
+# -------------------------
+# CSV data source (sidebar): URL, file upload, or local fallback
+# -------------------------
+st.sidebar.header("مصدر البيانات")
+csv_url = st.sidebar.text_input("CSV URL", value=csv_url_default)
+uploaded_file = st.sidebar.file_uploader("أو ارفع ملف CSV", type=["csv"]) 
+
+df = None
+if uploaded_file is not None:
+    try:
+        df = pd.read_csv(uploaded_file)
+        st.sidebar.success("تم تحميل الملف المرفوع.")
+    except Exception as e:
+        st.sidebar.error(f"فشل قراءة الملف المرفوع: {e}")
+else:
+    if csv_url:
+        try:
+            with st.spinner("تحميل البيانات من الرابط..."):
+                df = load_csv_from_url(csv_url)
+                st.sidebar.success("تم تحميل CSV من الرابط.")
+        except Exception as e:
+            st.sidebar.error(f"فشل تحميل CSV من الرابط: {e}")
+
+# Local fallback file
+if df is None:
+    local_path = os.path.join(os.getcwd(), "tracking_output_headless.csv")
+    if os.path.isfile(local_path):
+        try:
+            df = pd.read_csv(local_path)
+            st.sidebar.info("تم تحميل CSV المحلي كنسخة احتياطية.")
+        except Exception:
+            df = None
+
+if df is None:
+    st.warning("لم يتم تحميل أي بيانات. الرجاء إدخال رابط صالح أو رفع ملف CSV.")
+    st.stop()
+
+st.dataframe(df)
 
 
 # ============================================================
