@@ -1723,13 +1723,13 @@ def build_event_leaderboard(df_match: pd.DataFrame, cat: str, attr: str, act: st
         x = x[x["action"] == act].copy()
 
     if x.empty:
-        return pd.DataFrame(columns=["الترتيب","اللاعب","الفريق","النتيجة"])
+        return pd.DataFrame(columns=["Rank","Player","Team","Score"])
 
     g = x.groupby(["player_name","team_name"]).size().reset_index(name="score")
     g = g.sort_values("score", ascending=False).reset_index(drop=True)
     g["rank"] = np.arange(1, len(g)+1)
-    out = g.rename(columns={"rank":"الترتيب","player_name":"اللاعب","team_name":"الفريق","score":"النتيجة"})
-    return out[["الترتيب","اللاعب","الفريق","النتيجة"]].head(20)
+    out = g.rename(columns={"rank":"Rank","player_name":"Player","team_name":"Team","score":"Score"})
+    return out[["Rank","Player","Team","Score"]].head(20)
 
 def bar_top10_horizontal(df_top: pd.DataFrame, title: str, value_col: str, label_col: str):
     fig, ax = plt.subplots(figsize=(10, 5), dpi=160)
@@ -1740,21 +1740,22 @@ def bar_top10_horizontal(df_top: pd.DataFrame, title: str, value_col: str, label
     ax.barh(y, df_top[value_col].values)
     ax.set_yticks(y)
     fp = arabic_fontprop()
-    labels = [ar_text(x) for x in df_top[label_col].values]
+    labels = [x for x in df_top[label_col].values]
     if fp is not None:
         ax.set_yticklabels(labels, fontproperties=fp, fontsize=10)
     else:
         ax.set_yticklabels(labels, fontsize=10)
     ax.invert_yaxis()
     fp = arabic_fontprop()
+    # Title is expected to be English for these leaderboard plots
     if fp is not None:
         fig.text(0.5, 0.95,
-                 ar_text(title), ha="center", va="center",
+                 title, ha="center", va="center",
                  fontsize=16, color=TEXT,
                  bbox=dict(facecolor=LINE, boxstyle="round,pad=0.6", alpha=0.95), fontproperties=fp)
     else:
         fig.text(0.5, 0.95,
-                 ar_text(title), ha="center", va="center",
+                 title, ha="center", va="center",
                  fontsize=16, color=TEXT,
                  bbox=dict(facecolor=LINE, boxstyle="round,pad=0.6", alpha=0.95))
     ax.grid(axis="x", alpha=0.25)
@@ -1767,23 +1768,23 @@ def make_label(row):
 def top10_raw(metrics_df: pd.DataFrame, metric: str):
     m = metrics_df.copy()
     if metric == "تمريرات_إجمالي":
-        col = "passes_total"; title = "أفضل 10 — التمرير (إجمالي التمريرات)"
+        col = "passes_total"; title = "Top 10 — Passing (Total passes)"
     elif metric == "تمريرات_ناجحة":
-        col = "passes_success"; title = "أفضل 10 — التمرير (التمريرات الناجحة)"
+        col = "passes_success"; title = "Top 10 — Passing (Successful passes)"
     elif metric == "مراوغات_إجمالي":
-        col = "dribbles_total"; title = "أفضل 10 — المراوغة (إجمالي المحاولات)"
+        col = "dribbles_total"; title = "Top 10 — Dribbling (Total attempts)"
     elif metric == "مراوغات_ناجحة":
-        col = "dribbles_success"; title = "أفضل 10 — المراوغة (الناجحة)"
+        col = "dribbles_success"; title = "Top 10 — Dribbling (Successful)"
     elif metric == "صراعات_إجمالي":
-        col = "duels_total"; title = "أفضل 10 — البدني (إجمالي الصراعات)"
+        col = "duels_total"; title = "Top 10 — Physical (Total duels)"
     elif metric == "صراعات_مكسوبة":
-        col = "duels_won"; title = "أفضل 10 — البدني (الصراعات المكسبوة)"
+        col = "duels_won"; title = "Top 10 — Physical (Duels won)"
     elif metric == "دفاع_RAW":
-        col = "def_actions_raw"; title = "أفضل 10 — الدفاع (ضغط + اعتراض + إبعاد)"
+        col = "def_actions_raw"; title = "Top 10 — Defending (pressure + interception + clearance)"
     elif metric == "تسديدات":
-        col = "shots"; title = "أفضل 10 — التسديد (عدد التسديدات)"
+        col = "shots"; title = "Top 10 — Shooting (shot count)"
     else:
-        col = "goals"; title = "أفضل 10 — الأهداف"
+        col = "goals"; title = "Top 10 — Goals"
 
     m["label"] = m.apply(make_label, axis=1)
     m = m.sort_values(col, ascending=False).head(10).copy()
@@ -1795,18 +1796,48 @@ def top10_raw(metrics_df: pd.DataFrame, metric: str):
 # =========================
 # UI
 # =========================
-st.title("⚽ لوحة الكشاف — تقرير لاعب + لوحات ترتيب + ذكاء اصطناعي + PDF")
+st.title("⚽ Scout Dashboard — Player Report + Leaderboards + AI + PDF")
 
-st.sidebar.subheader("📂 مصدر البيانات")
-st.sidebar.caption("البيانات تُحمّل من حقل 'CSV URL' أعلاه. لا حاجة لرفع ملف.")
+st.sidebar.subheader("📂 Data source")
+st.sidebar.caption("Data is loaded from the 'CSV URL' field above. No upload required.")
+
+# Optional: allow user to set GROQ API key (preferred AI provider)
+try:
+    groq_default = os.getenv("GROQ_API_KEY", "")
+except Exception:
+    groq_default = ""
+
+groq_key = st.sidebar.text_input("GROQ API Key", value=groq_default, type="password",
+                                 help="Optional: paste your GROQ_API_KEY here. If set, GROQ will be used for AI calls.")
+if groq_key:
+    try:
+        os.environ["GROQ_API_KEY"] = groq_key
+        st.sidebar.success("GROQ API key set for this session.")
+    except Exception:
+        pass
+
+# Optional: allow user to set OpenAI API key
+try:
+    openai_default = os.getenv("OPENAI_API_KEY", "")
+except Exception:
+    openai_default = ""
+
+openai_key = st.sidebar.text_input("OpenAI API Key", value=openai_default, type="password",
+                                   help="Optional: paste your OpenAI API key here. If set, OpenAI will be used for AI calls.")
+if openai_key:
+    try:
+        os.environ["OPENAI_API_KEY"] = openai_key
+        st.sidebar.success("OpenAI API key set for this session.")
+    except Exception:
+        pass
 
 # `df` تم تحميله سابقاً من الرابط الموجود في الشريط الجانبي (csv_url)
 # إذا كان غير مُعرَّف أو فارغ نوقف التنفيذ مع رسالة خطأ واضحة.
 if 'df' not in globals() or df is None or df.empty:
-    st.error("فشل تحميل البيانات من الرابط. تأكد من أن رابط CSV صالح ومتاح.")
+    st.error("Failed to load data from the URL. Ensure the CSV URL is valid and reachable.")
     st.stop()
 
-mode = st.sidebar.radio("اختر القسم", ["تقرير لاعب", "لوحات الترتيب"], index=0)
+mode = st.sidebar.radio("Select section", ["Player Report", "Leaderboards"], index=0)
 
 match_ids = sorted(pd.to_numeric(df["match_id"], errors="coerce").dropna().unique().tolist())
 if not match_ids:
@@ -1817,16 +1848,16 @@ match_id = st.sidebar.selectbox("اختر رقم المباراة (match_id)", m
 df_match = df[pd.to_numeric(df["match_id"], errors="coerce") == match_id].copy()
 
 # Diagnostic: Render a Matplotlib Arabic/English sample image on demand
-if st.sidebar.button("تشخيص خطوط العربية في الرسم (عرض عينة)"):
+if st.sidebar.button("Diagnose Arabic fonts in plots (preview)"):
     try:
         img = diagnostic_mpl_ar_demo()
-        st.sidebar.image(img, caption="اختبار خطوط Matplotlib (عربي/إنجليزي)")
+        st.sidebar.image(img, caption="Matplotlib font test (Arabic/English)")
     except Exception as e:
-        st.sidebar.error(f"خطأ أثناء إنشاء الصورة: {e}")
+        st.sidebar.error(f"Error creating image: {e}")
 
 metrics_df = compute_match_table(df_match)
 if metrics_df.empty:
-    st.warning("لا توجد بيانات لاعبين في هذه المباراة.")
+    st.warning("No player data for this match.")
     st.stop()
 
 match_table = compute_match_table(df_match)
@@ -1834,16 +1865,16 @@ match_table = compute_match_table(df_match)
 # =========================
 # LEADERBOARDS PAGE
 # =========================
-if mode == "لوحات الترتيب":
-    st.subheader("🏆 لوحات الترتيب — (مشابهة لأسلوب StepOut)")
+if mode == "Leaderboards":
+    st.subheader("🏆 Leaderboards — (StepOut-style)")
 
-    tab1, tab2 = st.tabs(["أفضل 10 (RAW)", "لوحة أحداث (تصنيف/سمة/إجراء)"])
+    tab1, tab2 = st.tabs(["Top 10 (RAW)", "Event leaderboard (category/attribute/action)"])
 
     with tab1:
-        st.caption("هذه أعمدة خام (RAW) كما هي من أحداث المباراة.")
+        st.caption("These are raw columns (RAW) directly from the match events.")
 
         metric_key = st.selectbox(
-            "اختر مقياس RAW",
+            "Select RAW metric",
             ["تمريرات_إجمالي","تمريرات_ناجحة","مراوغات_إجمالي","مراوغات_ناجحة",
              "صراعات_إجمالي","صراعات_مكسوبة","دفاع_RAW","تسديدات","أهداف"],
             index=0
@@ -1853,7 +1884,7 @@ if mode == "لوحات الترتيب":
 
         st.dataframe(
             top[["rank","player_name","team_name",value_col]].rename(columns={
-                "rank":"الترتيب","player_name":"اللاعب","team_name":"الفريق",value_col:"القيمة"
+                "rank":"Rank","player_name":"Player","team_name":"Team",value_col:"Value"
             }),
             use_container_width=True
         )
@@ -1861,7 +1892,7 @@ if mode == "لوحات الترتيب":
         fig = bar_top10_horizontal(top, title=title, value_col=value_col, label_col="label")
         st.pyplot(fig)
 
-        st.markdown("### 🧠 تحليل أداء أفضل لاعبين حسب المقياس المختار")
+        st.markdown("### 🧠 AI analysis of top players by selected metric")
 
         top2 = top.head(2).copy()
         payload_compare = {
@@ -1872,19 +1903,19 @@ if mode == "لوحات الترتيب":
             ]
         }
 
-        if st.button("تحليل أفضل لاعبين (AI)"):
+        if st.button("Analyze top players (AI)"):
             with st.spinner("جاري تحليل الأداء..."):
                 ai_comment = generate_ai_report_ar(payload_compare)
-                st.markdown("### 🔍 نتيجة التحليل")
-                st.markdown(safe_rtl_html(ai_comment), unsafe_allow_html=True)
+            st.markdown("### 🔍 Analysis Result")
+            st.markdown(safe_rtl_html(ai_comment), unsafe_allow_html=True)
 
-        st.markdown("### ⚔️ مقارنة لاعب ضد لاعب — رادار مكعب (5 محاور)")
+        st.markdown("### ⚔️ Player vs Player Comparison — Cube Radar (5 axes)")
 
         # Build disambiguated labels (player — team) to avoid duplicate names
         match_table["label"] = match_table.apply(make_label, axis=1)
         all_labels = match_table["label"].drop_duplicates().tolist()
-        p1_label = st.selectbox("اختر اللاعب الأول", all_labels, key="cmp1")
-        p2_label = st.selectbox("اختر اللاعب الثاني", all_labels, key="cmp2")
+        p1_label = st.selectbox("Select first player", all_labels, key="cmp1")
+        p2_label = st.selectbox("Select second player", all_labels, key="cmp2")
 
         radar_metrics_en = ["Passing","Dribbling","Shooting","Physical","Defending"]
         radar_metrics_ar = ["التمرير","المراوغة","التسديد","البدني","الدفاع"]
@@ -1928,12 +1959,9 @@ if mode == "لوحات الترتيب":
         ax.plot(P2[:, 0], P2[:, 1], color="#0ea5e9", lw=3)
         ax.fill(P2[:, 0], P2[:, 1], color="#0ea5e9", alpha=0.25)
 
-        for i, label in enumerate(radar_metrics_ar):
+        for i, label in enumerate(radar_metrics_en):
             x, y = dirs[i] * 1.25
-            if fp is not None:
-                ax.text(x, y, ar_text(label), ha="center", va="center", fontsize=13, color="#111", fontproperties=fp)
-            else:
-                ax.text(x, y, ar_text(label), ha="center", va="center", fontsize=13, color="#111")
+            ax.text(x, y, label, ha="center", va="center", fontsize=13, color="#111")
 
         # ensure p1/p2 strings exist (we store rows earlier)
         try:
@@ -1946,15 +1974,12 @@ if mode == "لوحات الترتيب":
         # Arabic-capable FontProperties for legend/title
         fp = arabic_fontprop()
 
-        if fp is not None:
-            ax.set_title(ar_text("مقارنة أداء اللاعبين — رادار مكعب"), fontsize=16, pad=20, color="#111", fontproperties=fp)
-        else:
-            ax.set_title("مقارنة أداء اللاعبين — رادار مكعب", fontsize=16, pad=20, color="#111")
+        ax.set_title("Player performance comparison — Cube Radar", fontsize=16, pad=20, color="#111")
 
         leg = ax.legend(
             handles=[
-                plt.Line2D([0], [0], color="#7c3aed", lw=3, label=ar_mpl_plain(p1)),
-                plt.Line2D([0], [0], color="#0ea5e9", lw=3, label=ar_mpl_plain(p2)),
+                plt.Line2D([0], [0], color="#7c3aed", lw=3, label=p1),
+                plt.Line2D([0], [0], color="#0ea5e9", lw=3, label=p2),
             ],
             loc="lower center",
             bbox_to_anchor=(0.5, -0.12),
@@ -1977,48 +2002,48 @@ if mode == "لوحات الترتيب":
 
         st.pyplot(fig_radar)
 
-        st.markdown("### 🧠 تحليل الذكاء الاصطناعي للرادار")
+        st.markdown("### 🧠 AI radar analysis")
 
         payload_radar = {
             "player_1": {"name": p1, "scores": dict(zip(radar_metrics_en, (p1_vals * 10).tolist()))},
             "player_2": {"name": p2, "scores": dict(zip(radar_metrics_en, (p2_vals * 10).tolist()))}
         }
 
-        if st.button("تحليل المقارنة (AI)"):
-            with st.spinner("جاري تحليل المقارنة بالرادار..."):
+        if st.button("Analyze comparison (AI)"):
+            with st.spinner("Analyzing radar comparison..."):
                 ai_radar_comment = generate_ai_report_ar(payload_radar)
             st.markdown(safe_rtl_html(ai_radar_comment), unsafe_allow_html=True)
 
     with tab2:
-        st.caption("اختر (التصنيف/السمة/الإجراء) من نفس ملف الأحداث، والنتيجة = عدد تكرار الحدث لكل لاعب.")
+        st.caption("Choose (category/attribute/action) from the events file; value = count of event occurrences per player.")
 
         cats = ["الكل"] + sorted(df_match["attribute"].astype(str).unique().tolist())
-        cat = st.selectbox("التصنيف (attribute)", cats, index=0)
+        cat = st.selectbox("Category (attribute)", cats, index=0)
 
         tmp = df_match.copy()
         if cat != "الكل":
             tmp = tmp[tmp["attribute"] == cat].copy()
 
         attrs = ["الكل"] + sorted(tmp["sub_attribute"].astype(str).unique().tolist())
-        attr = st.selectbox("السمة (sub_attribute)", attrs, index=0)
+        attr = st.selectbox("Attribute (sub_attribute)", attrs, index=0)
 
         tmp2 = tmp.copy()
         if attr != "الكل":
             tmp2 = tmp2[tmp2["sub_attribute"] == attr].copy()
 
         acts = ["الكل"] + sorted(tmp2["action"].astype(str).unique().tolist())
-        act = st.selectbox("الإجراء (action)", acts, index=0)
+        act = st.selectbox("Action (action)", acts, index=0)
 
         lb = build_event_leaderboard(df_match, cat, attr, act)
         st.dataframe(lb, use_container_width=True)
 
         if not lb.empty:
             lb10 = lb.head(10).copy()
-            lb10["label"] = lb10["اللاعب"].astype(str) + " — " + lb10["الفريق"].astype(str)
+            lb10["label"] = lb10["Player"].astype(str) + " — " + lb10["Team"].astype(str)
             fig2 = bar_top10_horizontal(
                 lb10,
-                title=f"أفضل 10 — {cat} / {attr} / {act}",
-                value_col="النتيجة",
+                title=f"Top 10 — {cat} / {attr} / {act}",
+                value_col="Score",
                 label_col="label"
             )
             st.pyplot(fig2)
