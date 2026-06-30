@@ -1298,25 +1298,103 @@ def openai_client():
     except Exception as e:
         return None, str(e)
 
+
+def invoke_model_client(client, model, prompt, temperature=0.2):
+    """
+    Try calling the provided client with a prompt using a number of
+    likely method names (Groq variants and other SDK shapes).
+    Returns a string result on success or raises an Exception.
+    If caller should fall back to OpenAI-style chat API, raise AttributeError.
+    """
+    # If it's not a Groq-like client, signal fallback
+    if Groq is None or not (hasattr(client, '__class__') and client.__class__.__name__.lower().startswith('groq')):
+        raise AttributeError("Not a Groq client")
+
+    errors = []
+    res = None
+
+    # candidate callables in order of likelihood
+    calls = []
+    if hasattr(client, 'generate'):
+        calls.append(lambda: client.generate(model=model, prompt=prompt, temperature=temperature))
+    if hasattr(client, 'completions') and hasattr(client.completions, 'create'):
+        calls.append(lambda: client.completions.create(model=model, prompt=prompt, temperature=temperature))
+    if hasattr(client, 'completions') and hasattr(client.completions, 'generate'):
+        calls.append(lambda: client.completions.generate(model=model, prompt=prompt, temperature=temperature))
+    if hasattr(client, 'complete'):
+        calls.append(lambda: client.complete(prompt=prompt, model=model, temperature=temperature))
+    if hasattr(client, 'create_completion'):
+        calls.append(lambda: client.create_completion(prompt=prompt, model=model, temperature=temperature))
+
+    if not calls:
+        raise Exception('Groq client has no known generation methods')
+
+    for fn in calls:
+        try:
+            res = fn()
+            break
+        except Exception as e:
+            errors.append(str(e))
+            continue
+
+    if res is None:
+        raise Exception('All Groq client calls failed: ' + ' | '.join(errors))
+
+    # Normalize response to text
+    try:
+        # dict-like
+        if isinstance(res, dict):
+            # try common shapes
+            if 'outputs' in res:
+                out = res['outputs']
+                if out and isinstance(out, list):
+                    c = out[0].get('content', [])
+                    if c and isinstance(c, list):
+                        return c[0].get('text', str(res))
+            if 'choices' in res:
+                ch = res['choices']
+                if ch and isinstance(ch, list):
+                    return ch[0].get('text', str(res))
+            # fallback stringify
+            return str(res)
+
+        # object-like
+        try:
+            outputs = getattr(res, 'outputs', None)
+            if outputs:
+                try:
+                    return outputs[0].content[0].text
+                except Exception:
+                    return str(outputs)
+        except Exception:
+            pass
+
+        # openai-like .choices
+        try:
+            return res.choices[0].text
+        except Exception:
+            pass
+
+        return str(res)
+    except Exception as e:
+        raise Exception(f'Failed to parse model response: {e}')
+
 def generate_ai_report_ar(payload: dict) -> str:
     client, err = openai_client()
     if client is None:
         return f"❌ خطأ: {err}"
     try:
-        # If we have a Groq client, use its generate API
-        if Groq is not None and isinstance(client, Groq):
-            prompt = SCOUT_PROMPT_AR + "\n\n" + json.dumps(payload, ensure_ascii=False, indent=2)
-            resp = client.generate(model=MODEL, prompt=prompt, temperature=0.25)
-            # Try common response shapes
-            try:
-                return resp['outputs'][0]['content'][0]['text']
-            except Exception:
-                try:
-                    return resp.outputs[0].content[0].text
-                except Exception:
-                    return str(resp)
+        # Try using the generic invoker (Groq or compatible)
+        prompt = SCOUT_PROMPT_AR + "\n\n" + json.dumps(payload, ensure_ascii=False, indent=2)
+        try:
+            return invoke_model_client(client, MODEL, prompt, temperature=0.25)
+        except AttributeError:
+            # client not Groq-like, fall through to OpenAI-style call
+            pass
+        except Exception:
+            # if Groq call fails, fall back to OpenAI-style
+            pass
 
-        # Fallback to OpenAI-compatible interface
         resp = client.chat.completions.create(
             model=MODEL,
             messages=[
@@ -1337,17 +1415,13 @@ def chat_over_data_ar(question: str, context: dict) -> str:
     if client is None:
         return "حالياً الذكاء الاصطناعي غير متاح (مفتاح OpenAI/GROQ غير موجود)."
     try:
-        # Groq path
-        if Groq is not None and isinstance(client, Groq):
-            prompt = CHAT_PROMPT_AR + "\n\n" + f"بيانات:\n{json.dumps(context, ensure_ascii=False)}\n\nالسؤال:\n{question}"
-            resp = client.generate(model=MODEL, prompt=prompt, temperature=0.2)
-            try:
-                return resp['outputs'][0]['content'][0]['text']
-            except Exception:
-                try:
-                    return resp.outputs[0].content[0].text
-                except Exception:
-                    return str(resp)
+        prompt = CHAT_PROMPT_AR + "\n\n" + f"بيانات:\n{json.dumps(context, ensure_ascii=False)}\n\nالسؤال:\n{question}"
+        try:
+            return invoke_model_client(client, MODEL, prompt, temperature=0.2)
+        except AttributeError:
+            pass
+        except Exception:
+            pass
 
         resp = client.chat.completions.create(
             model=MODEL,
