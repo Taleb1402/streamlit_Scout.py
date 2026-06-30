@@ -125,6 +125,14 @@ try:
 except Exception:
     pass
 
+# Helper: read secrets from environment safely. Defined early so any
+# later function (openai_client, etc.) can call it without NameError.
+def env_secret(key: str) -> str:
+    try:
+        return os.getenv(key, "") or ""
+    except Exception:
+        return ""
+
 # OpenAI API Key: prefer hosting secrets, then environment; fallback to sidebar input (session-only)
 OPENAI_API_KEY = ""
 try:
@@ -156,6 +164,23 @@ if not OPENAI_API_KEY:
             st.sidebar.info("مفتاح OpenAI غير مُعين — بعض الميزات (التقارير الذكية) لن تعمل.")
     except Exception:
         pass
+
+# GROQ API key sidebar input (optional, free). Set per-session if provided.
+try:
+    groq_env = os.getenv("GROQ_API_KEY", "")
+    if not groq_env:
+        groq_input = st.sidebar.text_input("GROQ API Key (اختياري)", type="password", key="groq_api_key_input")
+        if groq_input:
+            os.environ["GROQ_API_KEY"] = groq_input
+            st.sidebar.success("تم تعيين GROQ API Key لهذه الجلسة.")
+            st.experimental_rerun()
+        else:
+            if Groq is None:
+                st.sidebar.info("مكتبة GROQ غير مثبتة أو غير متاحة — سيتم تجاهل GROQ حتى التثبيت.")
+            else:
+                st.sidebar.info("يمكنك لصق مفتاح GROQ هنا لاستخدام نموذج GROQ المجاني.")
+except Exception:
+    pass
 
 
     # Helper: avoid using st.secrets directly (some Streamlit runtimes raise
@@ -217,8 +242,9 @@ st.session_state.setdefault("pdf2_bytes", None)
 
 PITCH_W, PITCH_H = 120.0, 80.0
 ATTACK_DIR = "L2R"
-# Use a cost-effective fallback model to avoid quota issues when possible
-MODEL = "llama-3.1-8b-instant"
+# Model selection: prefer `OPENAI_MODEL` env var, fallback to `gpt-4o-mini` which
+# is commonly available. Allows overriding with `MODEL` for legacy setups.
+MODEL = os.getenv("OPENAI_MODEL", os.getenv("MODEL", "gpt-4o-mini"))
 
 
 # ============================================================
