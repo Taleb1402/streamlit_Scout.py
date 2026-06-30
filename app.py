@@ -125,32 +125,12 @@ try:
 except Exception:
     pass
 
-# Helper: read secrets from environment safely. Defined early so any
-# later function (openai_client, etc.) can call it without NameError.
-def env_secret(key: str) -> str:
-    try:
-        return os.getenv(key, "") or ""
-    except Exception:
-        return ""
-
 # OpenAI API Key: prefer hosting secrets, then environment; fallback to sidebar input (session-only)
-OPENAI_API_KEY = ""
-try:
-    if hasattr(st, "secrets"):
-        try:
-            OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", "")
-        except FileNotFoundError:
-            # No secrets.toml present — fall back to environment
-            OPENAI_API_KEY = ""
-        except Exception:
-            OPENAI_API_KEY = ""
-    else:
-        OPENAI_API_KEY = ""
-except Exception:
-    OPENAI_API_KEY = ""
-
-if not OPENAI_API_KEY:
-    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_API_KEY = (
+    st.secrets.get("OPENAI_API_KEY", "")
+    if hasattr(st, "secrets")
+    else ""
+) or os.getenv("OPENAI_API_KEY", "")
 
 if not OPENAI_API_KEY:
     try:
@@ -164,33 +144,6 @@ if not OPENAI_API_KEY:
             st.sidebar.info("مفتاح OpenAI غير مُعين — بعض الميزات (التقارير الذكية) لن تعمل.")
     except Exception:
         pass
-
-# GROQ API key sidebar input (optional, free). Set per-session if provided.
-try:
-    groq_env = os.getenv("GROQ_API_KEY", "")
-    if not groq_env:
-        groq_input = st.sidebar.text_input("GROQ API Key (اختياري)", type="password", key="groq_api_key_input")
-        if groq_input:
-            os.environ["GROQ_API_KEY"] = groq_input
-            st.sidebar.success("تم تعيين GROQ API Key لهذه الجلسة.")
-            st.experimental_rerun()
-        else:
-            if Groq is None:
-                st.sidebar.info("مكتبة GROQ غير مثبتة أو غير متاحة — سيتم تجاهل GROQ حتى التثبيت.")
-            else:
-                st.sidebar.info("يمكنك لصق مفتاح GROQ هنا لاستخدام نموذج GROQ المجاني.")
-except Exception:
-    pass
-
-
-    # Helper: avoid using st.secrets directly (some Streamlit runtimes raise
-    # FileNotFoundError when no secrets.toml exists). Use environment variables
-    # as the canonical source for API keys in this app.
-    def env_secret(key: str) -> str:
-        try:
-            return os.getenv(key, "") or ""
-        except Exception:
-            return ""
 
 # Note: Do not instantiate global OpenAI client here; use `openai_client()` when needed.
 # -------------------------
@@ -242,9 +195,8 @@ st.session_state.setdefault("pdf2_bytes", None)
 
 PITCH_W, PITCH_H = 120.0, 80.0
 ATTACK_DIR = "L2R"
-# Model selection: prefer `OPENAI_MODEL` env var, fallback to `gpt-4o-mini` which
-# is commonly available. Allows overriding with `MODEL` for legacy setups.
-MODEL = os.getenv("OPENAI_MODEL", os.getenv("MODEL", "gpt-4o-mini"))
+# Use a cost-effective fallback model to avoid quota issues when possible
+MODEL = "llama-3.1-8b-instant"
 
 
 # ============================================================
@@ -1314,7 +1266,11 @@ def openai_client():
     """
     # Try Groq first (server-side secret recommended)
     try:
-        groq_key = env_secret("GROQ_API_KEY")
+        groq_key = ""
+        try:
+            groq_key = st.secrets.get("GROQ_API_KEY", "")
+        except Exception:
+            pass
         if not groq_key:
             groq_key = os.getenv("GROQ_API_KEY", "")
         groq_key = (groq_key or "").strip()
@@ -1327,7 +1283,11 @@ def openai_client():
         pass
 
     # Fall back to OpenAI
-    api_key = env_secret("OPENAI_API_KEY")
+    api_key = ""
+    try:
+        api_key = st.secrets.get("OPENAI_API_KEY", "")
+    except Exception:
+        pass
     if not api_key:
         api_key = os.getenv("OPENAI_API_KEY", "")
     api_key = (api_key or "").strip()
@@ -1735,44 +1695,9 @@ st.title("⚽ لوحة الكشاف — تقرير لاعب + لوحات ترت�
 
 st.sidebar.subheader("📂 رفع البيانات")
 up = st.sidebar.file_uploader("ارفع ملف CSV", type=["csv"])
-
-# Allow providing a direct CSV URL in the sidebar (preferred if provided).
-csv_url = st.sidebar.text_input(
-    "أو ضع رابط CSV مباشر (اختياري)",
-    value="https://raw.githubusercontent.com/Taleb1402/streamlit_Scout.py/refs/heads/main/7658_1782653467327.csv",
-)
-
-# If user provided a URL and didn't upload a file, use that URL.
-if not up and csv_url and str(csv_url).strip():
-    up = str(csv_url).strip()
-
-# If still no file, attempt to load a local default CSV so the app can render
-# immediately (useful for quick demos). Falls back to asking the user to
-# upload if nothing is available.
 if not up:
-    default_paths = [
-        os.path.join(os.path.dirname(__file__), "tracking_output_headless.csv"),
-        os.path.join(os.getcwd(), "AI scouting", "tracking_output_headless.csv"),
-        os.path.join(os.getcwd(), "tracking_output_headless.csv"),
-    ]
-    default_file = None
-    for p in default_paths:
-        try:
-            if p and os.path.isfile(p):
-                default_file = p
-                break
-        except Exception:
-            continue
-
-    if default_file:
-        try:
-            st.sidebar.info(f"لم يتم رفع ملف — يتم استخدام الملف الافتراضي: {os.path.basename(default_file)}")
-            up = default_file
-        except Exception:
-            up = None
-    else:
-        st.info("ارفع ملف CSV من الشريط الجانبي.")
-        st.stop()
+    st.info("ارفع ملف CSV من الشريط الجانبي.")
+    st.stop()
 
 df = load_data_from_upload(up)
 
