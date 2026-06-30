@@ -3,7 +3,7 @@ numpy
 pandas
 matplotlib
 seaborn
-openai
+openai>=1.0.0
 reportlab
 Pillow
 arabic-reshaper
