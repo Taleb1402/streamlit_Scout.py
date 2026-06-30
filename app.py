@@ -106,14 +106,31 @@ if _logo_img is not None:
 import streamlit as st
 import pandas as pd
 import requests, io
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 # Default CSV URL (user-provided)
-csv_url_default = "https://raw.githubusercontent.com/Taleb1402/streamlit_Scout.py/main/7658_1782653467327.csv"
+csv_url_default = "https://cdn.jsdelivr.net/gh/Taleb1402/streamlit_Scout.py@main/7658_1782653467327.csv"
 
-def load_csv_from_url(url: str, timeout: int = 10) -> pd.DataFrame:
-    """Robust CSV loader: tries the URL, falls back to GitHub raw conversion if needed."""
+def load_csv_from_url(url: str, timeout: int = 30, retries: int = 3, backoff: float = 0.5) -> pd.DataFrame:
+    """Robust CSV loader using requests.Session with retries and longer timeout.
+
+    Falls back to converting GitHub page URL to raw URL when needed and finally
+    tries `pd.read_csv(url)` as a last resort.
+    """
+    session = requests.Session()
+    retry = Retry(
+        total=retries,
+        backoff_factor=backoff,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=("GET",),
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+
     try:
-        resp = requests.get(url, timeout=timeout)
+        resp = session.get(url, timeout=timeout)
         resp.raise_for_status()
         txt = resp.text
 
@@ -121,11 +138,15 @@ def load_csv_from_url(url: str, timeout: int = 10) -> pd.DataFrame:
         if txt.lstrip().startswith("<"):
             if "github.com" in url and "raw.githubusercontent.com" not in url:
                 raw_url = url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
-                resp2 = requests.get(raw_url, timeout=timeout)
+                resp2 = session.get(raw_url, timeout=timeout)
                 resp2.raise_for_status()
                 txt = resp2.text
             else:
-                raise ValueError("URL did not return CSV content; received HTML")
+                # Last resort: try pandas directly from the URL (it may handle redirects)
+                try:
+                    return pd.read_csv(url)
+                except Exception:
+                    raise ValueError("URL did not return CSV content; received HTML")
 
         return pd.read_csv(io.StringIO(txt))
     except Exception:
@@ -231,40 +252,21 @@ MODEL = "llama-3.1-8b-instant"
 
 
 # -------------------------
-# CSV data source (sidebar): URL, file upload, or local fallback
+# CSV data source (sidebar): URL only
 # -------------------------
 st.sidebar.header("مصدر البيانات")
 csv_url = st.sidebar.text_input("CSV URL", value=csv_url_default)
-uploaded_file = st.sidebar.file_uploader("أو ارفع ملف CSV", type=["csv"]) 
 
-df = None
-if uploaded_file is not None:
-    try:
-        df = pd.read_csv(uploaded_file)
-        st.sidebar.success("تم تحميل الملف المرفوع.")
-    except Exception as e:
-        st.sidebar.error(f"فشل قراءة الملف المرفوع: {e}")
-else:
-    if csv_url:
-        try:
-            with st.spinner("تحميل البيانات من الرابط..."):
-                df = load_csv_from_url(csv_url)
-                st.sidebar.success("تم تحميل CSV من الرابط.")
-        except Exception as e:
-            st.sidebar.error(f"فشل تحميل CSV من الرابط: {e}")
+if not csv_url:
+    st.error("الرجاء لصق رابط CSV صالح في حقل 'CSV URL' في الشريط الجانبي.")
+    st.stop()
 
-# Local fallback file
-if df is None:
-    local_path = os.path.join(os.getcwd(), "tracking_output_headless.csv")
-    if os.path.isfile(local_path):
-        try:
-            df = pd.read_csv(local_path)
-            st.sidebar.info("تم تحميل CSV المحلي كنسخة احتياطية.")
-        except Exception:
-            df = None
-
-if df is None:
-    st.warning("لم يتم تحميل أي بيانات. الرجاء إدخال رابط صالح أو رفع ملف CSV.")
+try:
+    with st.spinner("تحميل البيانات من الرابط..."):
+        df = load_csv_from_url(csv_url)
+        st.sidebar.success("تم تحميل CSV من الرابط.")
+except Exception as e:
+    st.error(f"فشل تحميل CSV من الرابط: {e}")
     st.stop()
 
 st.dataframe(df)
@@ -409,12 +411,10 @@ def rtl_plot_text(text: str) -> str:
     """
     return ar_mpl(text)
 
-csv_url = "https://raw.githubusercontent.com/Taleb1402/streamlit_Scout.py/main/7658_1782653467327.csv"
+csv_url = "https://cdn.jsdelivr.net/gh/Taleb1402/streamlit_Scout.py@main/7658_1782653467327.csv"
 
 # تحميل بواسطة pandas
 import pandas as pd
-df = pd.read_csv(csv_url)
-print(df.head())
 # -------------------------
 # Matplotlib Arabic font helpers
 # -------------------------
@@ -1769,13 +1769,14 @@ def top10_raw(metrics_df: pd.DataFrame, metric: str):
 # =========================
 st.title("⚽ لوحة الكشاف — تقرير لاعب + لوحات ترتيب + ذكاء اصطناعي + PDF")
 
-st.sidebar.subheader("📂 رفع البيانات")
-up = st.sidebar.file_uploader("ارفع ملف CSV", type=["csv"])
-if not up:
-    st.info("ارفع ملف CSV من الشريط الجانبي.")
-    st.stop()
+st.sidebar.subheader("📂 مصدر البيانات")
+st.sidebar.caption("البيانات تُحمّل من حقل 'CSV URL' أعلاه. لا حاجة لرفع ملف.")
 
-df = load_data_from_upload(up)
+# `df` تم تحميله سابقاً من الرابط الموجود في الشريط الجانبي (csv_url)
+# إذا كان غير مُعرَّف أو فارغ نوقف التنفيذ مع رسالة خطأ واضحة.
+if 'df' not in globals() or df is None or df.empty:
+    st.error("فشل تحميل البيانات من الرابط. تأكد من أن رابط CSV صالح ومتاح.")
+    st.stop()
 
 mode = st.sidebar.radio("اختر القسم", ["تقرير لاعب", "لوحات الترتيب"], index=0)
 
