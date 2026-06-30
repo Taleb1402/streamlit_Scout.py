@@ -191,7 +191,8 @@ st.session_state.setdefault("pdf2_bytes", None)
 
 PITCH_W, PITCH_H = 120.0, 80.0
 ATTACK_DIR = "L2R"
-MODEL = "gpt-4o-mini"
+# Use a cost-effective fallback model to avoid quota issues when possible
+MODEL = "gpt-3.5-turbo"
 
 
 # ============================================================
@@ -1292,6 +1293,9 @@ def generate_ai_report_ar(payload: dict) -> str:
         )
         return resp.choices[0].message.content
     except Exception as e:
+        msg = str(e)
+        if "insufficient_quota" in msg or "429" in msg:
+            return ("❌ نفد رصيد OpenAI أو تجاوزت الحصة. رجاءً تحقق من خطة الفوترة أو استخدم نموذجًا أرخص (gpt-3.5-turbo).")
         return f"❌ خطأ في الذكاء الاصطناعي: {e}"
 
 def chat_over_data_ar(question: str, context: dict) -> str:
@@ -1309,6 +1313,9 @@ def chat_over_data_ar(question: str, context: dict) -> str:
         )
         return resp.choices[0].message.content
     except Exception as e:
+        msg = str(e)
+        if "insufficient_quota" in msg or "429" in msg:
+            return ("❌ نفد رصيد OpenAI أو تجاوزت الحصة. الرجاء التحقق من Billing أو تبديل النموذج إلى gpt-3.5-turbo.")
         return f"حدث خطأ في الذكاء الاصطناعي: {e}"
 
 
