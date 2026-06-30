@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
-
+from dotenv import load_dotenv
 # Optional (your extra libs)
 #import cv2
 import seaborn as sns
