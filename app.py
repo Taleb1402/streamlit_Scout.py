@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 # Optional (your extra libs)
 #import cv2
 import seaborn as sns
-from ultralytics import YOLO
+#from ultralytics import YOLO
 
 from dotenv import load_dotenv
 from openai import OpenAI
