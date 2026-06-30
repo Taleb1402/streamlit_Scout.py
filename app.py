@@ -17,7 +17,7 @@ import streamlit as st
 import matplotlib.pyplot as plt
 
 # Optional (your extra libs)
-import cv2
+#import cv2
 import seaborn as sns
 from ultralytics import YOLO
 
