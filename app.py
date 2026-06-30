@@ -23,6 +23,10 @@ import seaborn as sns
 
 #from dotenv import load_dotenv
 from openai import OpenAI
+try:
+    from groq import Groq
+except Exception:
+    Groq = None
 
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
@@ -192,7 +196,7 @@ st.session_state.setdefault("pdf2_bytes", None)
 PITCH_W, PITCH_H = 120.0, 80.0
 ATTACK_DIR = "L2R"
 # Use a cost-effective fallback model to avoid quota issues when possible
-MODEL = "gpt-3.5-turbo"
+MODEL = "llama-3.1-8b-instant"
 
 
 # ============================================================
@@ -1256,23 +1260,39 @@ def fig_to_png_bytes(obj, dpi=150):
 # OPENAI
 # -------------------------
 def openai_client():
-    api_key = ""
+    """
+    Return a client and empty-error string. Prefer GROQ if available via GROQ_API_KEY,
+    else fall back to OpenAI via OPENAI_API_KEY.
+    """
+    # Try Groq first (server-side secret recommended)
+    try:
+        groq_key = ""
+        try:
+            groq_key = st.secrets.get("GROQ_API_KEY", "")
+        except Exception:
+            pass
+        if not groq_key:
+            groq_key = os.getenv("GROQ_API_KEY", "")
+        groq_key = (groq_key or "").strip()
+        if groq_key and Groq is not None:
+            try:
+                return Groq(api_key=groq_key), ""
+            except Exception:
+                pass
+    except Exception:
+        pass
 
-    # أولاً: اقرأ من Streamlit Secrets
+    # Fall back to OpenAI
+    api_key = ""
     try:
         api_key = st.secrets.get("OPENAI_API_KEY", "")
     except Exception:
         pass
-
-    # ثانياً: إذا لم يوجد، اقرأ من .env أو متغيرات البيئة
     if not api_key:
         api_key = os.getenv("OPENAI_API_KEY", "")
-
-    api_key = api_key.strip()
-
+    api_key = (api_key or "").strip()
     if not api_key:
-        return None, "OPENAI_API_KEY missing"
-
+        return None, "No GROQ_API_KEY or OPENAI_API_KEY found"
     try:
         return OpenAI(api_key=api_key), ""
     except Exception as e:
@@ -1283,6 +1303,20 @@ def generate_ai_report_ar(payload: dict) -> str:
     if client is None:
         return f"❌ خطأ: {err}"
     try:
+        # If we have a Groq client, use its generate API
+        if Groq is not None and isinstance(client, Groq):
+            prompt = SCOUT_PROMPT_AR + "\n\n" + json.dumps(payload, ensure_ascii=False, indent=2)
+            resp = client.generate(model=MODEL, prompt=prompt, temperature=0.25)
+            # Try common response shapes
+            try:
+                return resp['outputs'][0]['content'][0]['text']
+            except Exception:
+                try:
+                    return resp.outputs[0].content[0].text
+                except Exception:
+                    return str(resp)
+
+        # Fallback to OpenAI-compatible interface
         resp = client.chat.completions.create(
             model=MODEL,
             messages=[
@@ -1301,8 +1335,20 @@ def generate_ai_report_ar(payload: dict) -> str:
 def chat_over_data_ar(question: str, context: dict) -> str:
     client, err = openai_client()
     if client is None:
-        return "حالياً الذكاء الاصطناعي غير متاح (مفتاح OpenAI غير موجود)."
+        return "حالياً الذكاء الاصطناعي غير متاح (مفتاح OpenAI/GROQ غير موجود)."
     try:
+        # Groq path
+        if Groq is not None and isinstance(client, Groq):
+            prompt = CHAT_PROMPT_AR + "\n\n" + f"بيانات:\n{json.dumps(context, ensure_ascii=False)}\n\nالسؤال:\n{question}"
+            resp = client.generate(model=MODEL, prompt=prompt, temperature=0.2)
+            try:
+                return resp['outputs'][0]['content'][0]['text']
+            except Exception:
+                try:
+                    return resp.outputs[0].content[0].text
+                except Exception:
+                    return str(resp)
+
         resp = client.chat.completions.create(
             model=MODEL,
             messages=[
