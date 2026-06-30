@@ -103,7 +103,12 @@ if _logo_img is not None:
             st.image(_logo_img, width=200)
         except Exception:
             pass
+csv_url = "https://raw.githubusercontent.com/Taleb1402/streamlit_Scout.py/main/7658_1782653467327.csv"
 
+# تحميل بواسطة pandas
+import pandas as pd
+df = pd.read_csv(csv_url)
+print(df.head())
 # -------------------------
 # OPTIONAL RTL shaping libs
 # -------------------------
