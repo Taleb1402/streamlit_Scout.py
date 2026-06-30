@@ -119,7 +119,14 @@ GREEN = "#22c55e"
 RED = "#ef4444"
 GOLD = "#f59e0b"
 LINE = "#22304a"
-
+PREFERRED_AR_FONTS = [
+    "Arabic Typesetting",
+    "Tahoma",
+    "Arial",
+    "Arial Narrow",
+    "Arial Black",
+    "Times New Roman",
+]
 # -------------------------
 # Matplotlib font
 # -------------------------
