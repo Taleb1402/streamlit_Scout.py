@@ -38,6 +38,14 @@ from bidi.algorithm import get_display
 import html as _html
 import matplotlib as mpl
 import matplotlib.font_manager as font_manager
+
+
+import arabic_reshaper
+from bidi.algorithm import get_display
+
+def ar(text):
+    text = str(text)
+    return get_display(arabic_reshaper.reshape(text))
 # -------------------------
 # STREAMLIT RTL CSS (more targeted)
 # -------------------------
