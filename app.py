@@ -42,7 +42,7 @@ import matplotlib.font_manager as font_manager
 
 import arabic_reshaper
 from bidi.algorithm import get_display
-OPENAI_API_KEY = "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"
+
 def ar(text):
     text = str(text)
     return get_display(arabic_reshaper.reshape(text))
@@ -121,7 +121,7 @@ try:
 except Exception:
     pass
 
-# OpenAI API Key
+# OpenAI API Key: prefer hosting secrets, then environment; fallback to sidebar input (session-only)
 OPENAI_API_KEY = (
     st.secrets.get("OPENAI_API_KEY", "")
     if hasattr(st, "secrets")
@@ -129,10 +129,19 @@ OPENAI_API_KEY = (
 ) or os.getenv("OPENAI_API_KEY", "")
 
 if not OPENAI_API_KEY:
-    st.error("❌ OPENAI_API_KEY missing")
-    st.stop()
+    try:
+        key_input = st.sidebar.text_input("OpenAI API Key (اختياري للتقارير)", type="password", key="openai_api_key_input")
+        if key_input:
+            os.environ["OPENAI_API_KEY"] = key_input
+            OPENAI_API_KEY = key_input
+            st.sidebar.success("تم تعيين مفتاح OpenAI لهذه الجلسة.")
+            st.experimental_rerun()
+        else:
+            st.sidebar.info("مفتاح OpenAI غير مُعين — بعض الميزات (التقارير الذكية) لن تعمل.")
+    except Exception:
+        pass
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+# Note: Do not instantiate global OpenAI client here; use `openai_client()` when needed.
 # -------------------------
 # THEME COLORS
 # -------------------------
