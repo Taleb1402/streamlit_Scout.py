@@ -918,22 +918,31 @@ def plot_pass_map(df_match: pd.DataFrame, player: str, title: str, direction="L2
         ax.add_patch(arrp)
 
     handles = [
-        Line2D([0],[0], color=PURPLE, lw=3, label=ar_mpl_plain("تمريرة ناجحة")),
-        Line2D([0],[0], color=RED, lw=3, linestyle="--", label=ar_mpl_plain("تمريرة غير ناجحة")),
-        Line2D([0],[0], color=GOLD, lw=3, label=ar_mpl_plain("تمريرة مفتاحية / أسيست")),
+        Line2D([0],[0], color=PURPLE, lw=3, label="Successful pass"),
+        Line2D([0],[0], color=RED, lw=3, linestyle="--", label="Unsuccessful pass"),
+        Line2D([0],[0], color=GOLD, lw=3, label="Key pass / Assist"),
     ]
     leg = ax.legend(handles=handles, loc="lower center", bbox_to_anchor=(0.5, -0.10),
                     ncol=3, frameon=False, fontsize=11)
     for t in leg.get_texts():
         t.set_color(TEXT)
 
+    # Title and footer: use English fallbacks for Matplotlib-rendered text to avoid Arabic shaping issues
+    try:
+        if re.search(r"[\u0600-\u06FF]", str(title)):
+            plot_title = "Pass Map"
+        else:
+            plot_title = str(title)
+    except Exception:
+        plot_title = "Pass Map"
+
     fig.text(0.5, 0.95,
-             rtl_plot_text(title), ha="center", va="center",
+             plot_title, ha="center", va="center",
              fontsize=16, color=TEXT,
              bbox=dict(facecolor=LINE, boxstyle="round,pad=0.6", alpha=0.95))
 
     fig.text(0.5, 0.055,
-             rtl_plot_text(f"إجمالي التمريرات: {total}  |  الدقة: {acc:.1f}%  |  مفتاحية/أسيست: {keyp}  |  غير ناجحة: {unsucc}"),
+             f"Total passes: {total}  |  Accuracy: {acc:.1f}%  |  Key/Assist: {keyp}  |  Unsuccessful: {unsucc}",
              ha="center", va="center", fontsize=12, color=TEXT)
 
     # apply font properties to legend and figure texts if available
@@ -1088,6 +1097,8 @@ def donut_chart(success, total, label, color):
 def plot_radar_5_ar(player_vals: dict, avg_vals: dict, title: str):
     labels_en = ["Passing","Dribbling","Shooting","Physical","Defending"]
     labels_ar = [ar_text("التمرير"), ar_text("المراوغة"), ar_text("التسديد"), ar_text("البدني"), ar_text("الدفاع")]
+    # For display we prefer English labels to avoid reversed Arabic in Matplotlib images
+    labels_display = labels_en
 
     v_player = [float(player_vals.get(k, 0.0)) for k in labels_en]
     v_avg    = [float(avg_vals.get(k, 0.0)) for k in labels_en]
@@ -1116,20 +1127,29 @@ def plot_radar_5_ar(player_vals: dict, avg_vals: dict, title: str):
 
         ax.set_thetagrids(np.degrees(angles[:-1]), [""]*len(labels_en))
         label_r = 10.9
-        for ang, lab in zip(angles[:-1], labels_ar):
+        for ang, lab in zip(angles[:-1], labels_display):
             ax.text(ang, label_r, lab, color=TEXT, fontsize=13, ha="center", va="center", **fp_kwargs)
 
         ax.set_rticks([2,4,6,8,10])
         ax.tick_params(colors=MUTED)
+        # Use English fallback title for Matplotlib-rendered radar to avoid Arabic shaping issues
+        try:
+            if re.search(r"[\u0600-\u06FF]", str(title)):
+                plot_title = "Performance Radar"
+            else:
+                plot_title = str(title)
+        except Exception:
+            plot_title = "Performance Radar"
+
         fig.text(0.5, 0.95,
-                 ar_text(title), ha="center", va="center",
+                 plot_title, ha="center", va="center",
                  fontsize=16, color=TEXT,
                  bbox=dict(facecolor=LINE, boxstyle="round,pad=0.6", alpha=0.95), **fp_kwargs)
 
         leg = ax.legend(
             handles=[
-                Line2D([0],[0], color=PURPLE, lw=3, label=ar_mpl_plain("اللاعب")),
-                Line2D([0],[0], color="#94a3b8", lw=2, label=ar_mpl_plain("متوسط المباراة")),
+                Line2D([0],[0], color=PURPLE, lw=3, label="Player"),
+                Line2D([0],[0], color="#94a3b8", lw=2, label="Match average"),
             ],
             loc="lower center",
             bbox_to_anchor=(0.5, -0.14),
@@ -1137,11 +1157,9 @@ def plot_radar_5_ar(player_vals: dict, avg_vals: dict, title: str):
             frameon=False,
             prop=fp
         )
-        # Shape legend text for Arabic and apply font properties
+        # Ensure legend text color/property
         try:
             for t in leg.get_texts():
-                txt = t.get_text()
-                t.set_text(ar_text(txt))
                 t.set_color(TEXT)
                 if fp is not None:
                     try:
@@ -1191,6 +1209,7 @@ def plot_radar_5_ar(player_vals: dict, avg_vals: dict, title: str):
 def plot_cube_radar_5_ar(player_vals: dict, avg_vals: dict, title: str):
     labels_en = ["Passing","Dribbling","Shooting","Physical","Defending"]
     labels_ar = ["التمرير", "المراوغة", "التسديد", "البدني", "الدفاع"]
+    labels_display = labels_en
 
     vals_p = np.array([float(player_vals.get(k, 0.0)) for k in labels_en], dtype=float) / 10.0
     vals_a = np.array([float(avg_vals.get(k, 0.0)) for k in labels_en], dtype=float) / 10.0
@@ -1228,16 +1247,25 @@ def plot_cube_radar_5_ar(player_vals: dict, avg_vals: dict, title: str):
         ax.plot(P[:, 0], P[:, 1], color=PURPLE, lw=3.0, alpha=0.98)
         ax.fill(P[:, 0], P[:, 1], color=PURPLE, alpha=0.25)
 
-        for i, lab in enumerate(labels_ar):
+        for i, lab in enumerate(labels_display):
             x, y = dirs[i] * 1.18
-            ax.text(x, y, ar_text(lab), ha="center", va="center",
+            ax.text(x, y, lab, ha="center", va="center",
                 fontsize=13, color=TEXT, fontweight="bold", **fp_kwargs)
 
-        ax.text(0, 1.52, ar_text(title), ha="center", va="center",
+        # Title fallback to English for Matplotlib-rendered image
+        try:
+            if re.search(r"[\u0600-\u06FF]", str(title)):
+                title_text = "Performance Radar"
+            else:
+                title_text = str(title)
+        except Exception:
+            title_text = "Performance Radar"
+
+        ax.text(0, 1.52, title_text, ha="center", va="center",
             fontsize=16, fontweight="bold", color=TEXT, **fp_kwargs)
 
-        ax.plot([], [], color=PURPLE, lw=3, label=ar_mpl_plain("اللاعب"))
-        ax.plot([], [], color="#94a3b8", lw=2.2, label=ar_mpl_plain("متوسط المباراة"))
+        ax.plot([], [], color=PURPLE, lw=3, label="Player")
+        ax.plot([], [], color="#94a3b8", lw=2.2, label="Match average")
         leg = ax.legend(loc="lower center", bbox_to_anchor=(0.5, -0.08), ncol=2, frameon=False, prop=fp)
         for t in leg.get_texts():
             t.set_color(TEXT)
